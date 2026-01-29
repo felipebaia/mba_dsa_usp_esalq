@@ -47,7 +47,7 @@ df_btc_rvi = (
 df_btc_hv = (
     df_periodo
     .merge(df_btc_price, how='left', on='Data_UTC')
-    .assign(btc_hv_log_ret=lambda df: np.log(df['HV'] / df['HV'].shift(1)))
+    .assign(btc_hv_log_ret=lambda df: np.log1p(df['HV']) - np.log1p(df['HV'].shift(1)))
     [['Data_UTC', 'btc_hv_log_ret']]
 )
 
@@ -86,7 +86,7 @@ df_supply_held_by = (
 df_miner_position = (
     df_periodo
     .merge(df_supply_held_by, how='left', on='Data_UTC')
-    .assign(btc_miner_net_pos_change=lambda df: np.log(df['btc_supply_held_miners']) - np.log(df['btc_supply_held_miners'].shift(1)))
+    .assign(btc_miner_net_pos_change=lambda df: np.log1p(df['btc_supply_held_miners']) - np.log1p(df['btc_supply_held_miners'].shift(1)))
     [['Data_UTC', 'btc_miner_net_pos_change']]
 )
 
@@ -118,8 +118,8 @@ df_btc_spx_corr = (
     .merge(df_sp500_raw, how='left', on='Data_UTC')
     .merge(df_btc_price[['Data_UTC', 'close']], how='left', on='Data_UTC')
     .assign(sp500_price=lambda df: df['sp500_price'].ffill())
-    .assign(btc_log_ret=lambda df: np.log(df['close'] / df['close'].shift(1)))
-    .assign(spx_log_ret=lambda df: np.log(df['sp500_price'] / df['sp500_price'].shift(1)))
+    .assign(btc_log_ret=lambda df: np.log1p(df['close']) - np.log1p(df['close'].shift(1)))
+    .assign(spx_log_ret=lambda df: np.log1p(df['sp500_price']) - np.log1p(df['sp500_price'].shift(1)))
     .assign(btc_spx_corr_30d=lambda df: df['btc_log_ret'].rolling(window=30).corr(df['spx_log_ret']))
     .assign(btc_spx_corr_30d=lambda df: df['btc_spx_corr_30d'].bfill())
     [['Data_UTC', 'btc_log_ret', 'btc_spx_corr_30d']]
@@ -172,8 +172,8 @@ df_whale = (
     .merge(df_whale_raw, how='left', on='Data_UTC')
     .fillna(0)
     .assign(
-        btc_whale_100k_log_ret=lambda df: np.log(df['btc_whale_tx_100k'] + 1) - np.log(df['btc_whale_tx_100k'].shift(1) + 1),
-        btc_whale_1m_log_ret=lambda df: np.log(df['btc_whale_tx_1m'] + 1) - np.log(df['btc_whale_tx_1m'].shift(1) + 1)
+        btc_whale_100k_log_ret=lambda df: np.log1p(df['btc_whale_tx_100k']) - np.log1p(df['btc_whale_tx_100k'].shift(1)),
+        btc_whale_1m_log_ret=lambda df: np.log1p(df['btc_whale_tx_1m']) - np.log1p(df['btc_whale_tx_1m'].shift(1))
     )
     [['Data_UTC', 'btc_whale_100k_log_ret', 'btc_whale_1m_log_ret']]
 )
@@ -193,8 +193,8 @@ df_eth_volume_raw = (
 df_eth_volume = (
     df_periodo
     .merge(df_eth_volume_raw, how='left', on='Data_UTC')
-    .assign(eth_tx_volume=lambda df: df['eth_tx_volume'].replace(0, np.nan).ffill())
-    .assign(eth_vol_log_ret=lambda df: np.log(df['eth_tx_volume']) - np.log(df['eth_tx_volume'].shift(1)))
+    .assign(eth_tx_volume=lambda df: df['eth_tx_volume'].fillna(0))
+    .assign(eth_vol_log_ret=lambda df: np.log1p(df['eth_tx_volume']) - np.log1p(df['eth_tx_volume'].shift(1)))
     [['Data_UTC', 'eth_vol_log_ret']]
 )
 
@@ -228,7 +228,7 @@ df_eth_social = (
     df_periodo
     .merge(df_social_eth_raw, how='left', on='Data_UTC')
     .assign(eth_social_dom_diff=lambda df: df['eth_social_dominance'].diff())
-    .assign(eth_social_vol_log_ret=lambda df: np.log(df['eth_social_volume']) - np.log(df['eth_social_volume'].shift(1)))
+    .assign(eth_social_vol_log_ret=lambda df: np.log1p(df['eth_social_volume']) - np.log1p(df['eth_social_volume'].shift(1)))
     [['Data_UTC', 'eth_social_dom_diff', 'eth_social_vol_log_ret']]
 )
 
@@ -248,7 +248,7 @@ df_spx_log_ret = (
     df_periodo
     .merge(df_sp500, how='left', on='Data_UTC')
     .assign(spx_close=lambda df: df['spx_close'].ffill())
-    .assign(spx_log_ret=lambda df: np.log(df['spx_close']) - np.log(df['spx_close'].shift(1)))
+    .assign(spx_log_ret=lambda df: np.log1p(df['spx_close']) - np.log1p(df['spx_close'].shift(1)))
     [['Data_UTC', 'spx_log_ret']]
 )
 
@@ -264,7 +264,7 @@ df_dxy_log_ret = (
     df_periodo
     .merge(df_dxy, how='left', on='Data_UTC')
     .assign(dxy_close=lambda df: df['dxy_close'].ffill())
-    .assign(dxy_log_ret=lambda df: np.log(df['dxy_close']) - np.log(df['dxy_close'].shift(1)))
+    .assign(dxy_log_ret=lambda df: np.log1p(df['dxy_close']) - np.log1p(df['dxy_close'].shift(1)))
     [['Data_UTC', 'dxy_log_ret']]
 )
 
@@ -280,7 +280,7 @@ df_nasdaq_log_ret = (
     df_periodo
     .merge(df_nasdaq, how='left', on='Data_UTC')
     .assign(nasdaq_close=lambda df: df['nasdaq_close'].ffill())
-    .assign(nasdaq_log_ret=lambda df: np.log(df['nasdaq_close']) - np.log(df['nasdaq_close'].shift(1)))
+    .assign(nasdaq_log_ret=lambda df: np.log1p(df['nasdaq_close']) - np.log1p(df['nasdaq_close'].shift(1)))
     [['Data_UTC', 'nasdaq_log_ret']]
 )
 
@@ -296,7 +296,7 @@ df_gold_log_ret = (
     df_periodo
     .merge(df_gold, how='left', on='Data_UTC')
     .assign(gold_close=lambda df: df['gold_close'].ffill())
-    .assign(gold_log_ret=lambda df: np.log(df['gold_close']) - np.log(df['gold_close'].shift(1)))
+    .assign(gold_log_ret=lambda df: np.log1p(df['gold_close']) - np.log1p(df['gold_close'].shift(1)))
     [['Data_UTC', 'gold_log_ret']]
 )
 
@@ -328,7 +328,7 @@ df_vix_log_ret = (
     df_periodo
     .merge(df_vix, how='left', on='Data_UTC')
     .assign(vix_close=lambda df: df['vix_close'].ffill())
-    .assign(vix_log_ret=lambda df: np.log(df['vix_close']) - np.log(df['vix_close'].shift(1)))
+    .assign(vix_log_ret=lambda df: np.log1p(df['vix_close']) - np.log1p(df['vix_close'].shift(1)))
     [['Data_UTC', 'vix_log_ret']]
 )
 
@@ -348,7 +348,7 @@ df_total3_log_ret = (
     df_periodo
     .merge(df_total3, how='left', on='Data_UTC')
     .assign(total3_mkcap=lambda df: df['total3_mkcap'].ffill())
-    .assign(total3_log_ret=lambda df: np.log(df['total3_mkcap']) - np.log(df['total3_mkcap'].shift(1)))
+    .assign(total3_log_ret=lambda df: np.log1p(df['total3_mkcap']) - np.log1p(df['total3_mkcap'].shift(1)))
     [['Data_UTC', 'total3_log_ret']]
 )
 

@@ -3,6 +3,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import datetime
 from dotenv import load_dotenv
+from statsmodels.tsa.stattools import adfuller
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import seaborn as sns
+import warnings
 import os
 
 load_dotenv('env/.env')
