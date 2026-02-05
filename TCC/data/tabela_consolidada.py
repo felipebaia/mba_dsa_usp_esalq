@@ -6,12 +6,12 @@ Este script consolida todas as features extraídas dos notebooks de ETL em um
 único DataFrame, utilizando df_periodo como base para o merge (left join).
 
 Features consolidadas:
-    - BTC: RVI, HV, Funding Rate, Miner Position, Exchange Supply, SPX-BTC Correlation, 
+    - BTC: RVI, Funding Rate, Miner Position, Exchange Supply, SPX-BTC Correlation, 
            Coinbase Premium, MVRV, Whale Transactions
-    - ETH: Transaction Volume, Exchange Supply, Social Metrics
     - MACRO: S&P500, DXY, NASDAQ, GOLD, US10Y, VIX
     - MKCAP: TOTAL3, SSR, Flippening Ratio
-    - SOCIAL: Social Volume Spread, Momentum, Market Noise
+    - SOCIAL: Social Volume Spread, Momentum
+    - STABLE: USDT Dominance, USDC Dominance
 =============================================================================
 """
 
@@ -24,51 +24,51 @@ from TCC.utils.constantes import *
 # PATHS DOS ARQUIVOS RAW
 # =============================================================================
 PATH_BTC = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_btc/raw/"
-PATH_ETH = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_eth/raw/"
 PATH_MACRO = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_macro/raw/"
 PATH_MKCAP = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_mkcap/raw/"
 PATH_SOCIAL = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_social/raw/"
+PATH_STABLE = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_stable/raw/"
 
 # =============================================================================
 # 1. FEATURES BTC
 # =============================================================================
 
-# --- 1.1 RVI (Relative Volatility Index) & HV (Historical Volatility) ---
+# --- 1.1 RVI (Relative Volatility Index) ---
 df_btc_price = pd.read_csv(PATH_BTC + "price_btc.csv")
 df_btc_price['Data_UTC'] = pd.to_datetime(df_btc_price['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d")
 
 df_btc_rvi = (
     df_periodo
     .merge(df_btc_price, how='left', on='Data_UTC')
-    .assign(btc_rvi_diff=lambda df: df['RVI'].diff())
-    [['Data_UTC', 'btc_rvi_diff']]
-)
-
-df_btc_hv = (
-    df_periodo
-    .merge(df_btc_price, how='left', on='Data_UTC')
-    .assign(btc_hv_log_ret=lambda df: np.log1p(df['HV']) - np.log1p(df['HV'].shift(1)))
-    [['Data_UTC', 'btc_hv_log_ret']]
+    .assign(rvi_diff=lambda df: df['RVI'].diff())
+    .query("Data_UTC > '2016-12-31'")
+    .rename(columns={'RVI': 'rvi_close'})
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']).dt.strftime("%Y-%m-%d"))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    [['Data_UTC', 'rvi_close', 'rvi_diff']]
 )
 
 # --- 1.2 Funding Rate (Futuros) ---
 df_funding_cexs = pd.read_csv(PATH_BTC + "2017_fundingRateCEXs.csv")
+
 df_funding_tratado = (
     df_funding_cexs
     .assign(Data_UTC=lambda df: pd.to_datetime(df['Date']).dt.strftime("%Y-%m-%d"))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
     .assign(
-        btc_funding_rate_mean=lambda df: df[[
+        total_funding_rate_btc=lambda df: df[[
             'BitMEX Funding Rate',
             'Binance Funding Rate (USDT)',
             'DyDx Exchange Funding Rates',
             'Deribit Exchange Funding Rates'
         ]].mean(axis=1, numeric_only=True),
-        btc_funding_rate_diff=lambda df: df['btc_funding_rate_mean'].diff()
+        funding_rate_diff_btc=lambda df: df['total_funding_rate_btc'].diff()
     )
-    [['Data_UTC', 'btc_funding_rate_mean', 'btc_funding_rate_diff']]
+    .query("Data_UTC > '2016-12-31'")
+    [['Data_UTC', 'total_funding_rate_btc', 'funding_rate_diff_btc']]
 )
 
-# --- 1.3 Miner Net Position Change ---
+# --- 1.3 Miner Net Position Change (Supply Held by Miners) ---
 df_supply_btc = pd.read_csv(PATH_BTC + "2009_supply_circulation_btc.csv")
 df_supply_held_raw = pd.read_csv(PATH_BTC + "2010_supply_held_miners_whales.csv")
 
@@ -77,166 +77,129 @@ df_supply_held_by = (
     .merge(df_supply_btc, how='left', on='Date')
     .assign(Data_UTC=lambda df: pd.to_datetime(df['Date'], utc=True).dt.strftime("%Y-%m-%d"))
     .rename(columns={
-        'Total Supply': 'btc_total_supply',
-        'Supply held by Miners': 'btc_supply_held_miners'
+        'Total Supply': 'Total_Supply_btc',
+        'Supply held by Miners': 'supply_held_by_miners_btc'
     })
-    [['Data_UTC', 'btc_supply_held_miners', 'btc_total_supply']]
+    [['Data_UTC', 'supply_held_by_miners_btc', 'Total_Supply_btc']]
 )
 
-df_miner_position = (
+df_supply_held_by_miners_btc = (
     df_periodo
     .merge(df_supply_held_by, how='left', on='Data_UTC')
-    .assign(btc_miner_net_pos_change=lambda df: np.log1p(df['btc_supply_held_miners']) - np.log1p(df['btc_supply_held_miners'].shift(1)))
-    [['Data_UTC', 'btc_miner_net_pos_change']]
+    .assign(miner_net_pos_change=lambda df: np.log(df['supply_held_by_miners_btc']) - np.log(df['supply_held_by_miners_btc'].shift(1)))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .assign(Data_UTC=lambda df: df['Data_UTC'].dt.strftime("%Y-%m-%d"))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2016-12-31'")
+    [['Data_UTC', 'supply_held_by_miners_btc', 'miner_net_pos_change']]
 )
 
 # --- 1.4 Supply on Exchanges (% of Total Supply) ---
 df_historical_balance = (
     pd.read_csv(PATH_BTC + "2010_supply_on_exchanges_perc.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['Date'], utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'Supply on Exchanges (as % of total supply)': 'btc_supply_on_exchanges_pct'})
-    [['Data_UTC', 'btc_supply_on_exchanges_pct']]
+    [['Data_UTC', 'Supply on Exchanges (as % of total supply)']]
 )
 
-df_btc_exchange_supply = (
+df_exchange_supply_btc = (
     df_periodo
     .merge(df_historical_balance, how='left', on='Data_UTC')
-    .assign(btc_exchange_supply_diff=lambda df: df['btc_supply_on_exchanges_pct'].diff())
-    [['Data_UTC', 'btc_exchange_supply_diff']]
+    .rename(columns={'Supply on Exchanges (as % of total supply)': 'supply_on_exchanges_perc_btc'})
+    .assign(exchange_supply_diff_btc=lambda df: df['supply_on_exchanges_perc_btc'].diff())
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .assign(Data_UTC=lambda df: df['Data_UTC'].dt.strftime("%Y-%m-%d"))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2016-12-31'")
+    [['Data_UTC', 'supply_on_exchanges_perc_btc', 'exchange_supply_diff_btc']]
 )
 
 # --- 1.5 SPX-BTC Rolling Correlation (30d) ---
 df_sp500_raw = (
     pd.read_csv(PATH_MACRO + "2014_SP500_PRICE.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'close': 'sp500_price'})
-    [['Data_UTC', 'sp500_price']]
+    .rename(columns={'close': 'spx_price'})
+    [['Data_UTC', 'spx_price']]
 )
 
-df_btc_spx_corr = (
+df_sp500_btc_divergence_btc = (
     df_periodo
     .merge(df_sp500_raw, how='left', on='Data_UTC')
-    .merge(df_btc_price[['Data_UTC', 'close']], how='left', on='Data_UTC')
-    .assign(sp500_price=lambda df: df['sp500_price'].ffill())
-    .assign(btc_log_ret=lambda df: np.log1p(df['close']) - np.log1p(df['close'].shift(1)))
-    .assign(spx_log_ret=lambda df: np.log1p(df['sp500_price']) - np.log1p(df['sp500_price'].shift(1)))
+    .merge(df_btc_price, how='left', on='Data_UTC')
+    .assign(spx_price=lambda df: df['spx_price'].ffill())
+    .assign(btc_log_ret=lambda df: np.log(df['close'] / df['close'].shift(1)))
+    .assign(spx_log_ret=lambda df: np.log(df['spx_price'] / df['spx_price'].shift(1)))
     .assign(btc_spx_corr_30d=lambda df: df['btc_log_ret'].rolling(window=30).corr(df['spx_log_ret']))
     .assign(btc_spx_corr_30d=lambda df: df['btc_spx_corr_30d'].bfill())
-    [['Data_UTC', 'btc_log_ret', 'btc_spx_corr_30d']]
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .assign(Data_UTC=lambda df: df['Data_UTC'].dt.strftime("%Y-%m-%d"))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2016-12-31'")
+    [['Data_UTC', 'spx_price', 'btc_log_ret', 'btc_spx_corr_30d']]
 )
 
 # --- 1.6 Coinbase Premium Index ---
 df_coinbase_premium = (
     pd.read_csv(PATH_BTC + "2018_coinbase_premium_index.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'close': 'btc_coinbase_premium_usd'})
-    [['Data_UTC', 'btc_coinbase_premium_usd']]
+    .rename(columns={'close': 'cb_premium_usd'})
+    [['Data_UTC', 'cb_premium_usd']]
 )
 
 df_coinbase_premium_diff = (
     df_periodo
     .merge(df_coinbase_premium, how='left', on='Data_UTC')
-    .assign(btc_coinbase_premium_diff=lambda df: df['btc_coinbase_premium_usd'].diff())
-    [['Data_UTC', 'btc_coinbase_premium_diff']]
+    .assign(cb_premium_diff_btc=lambda df: df['cb_premium_usd'].diff())
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2019-12-31'")
+    [['Data_UTC', 'cb_premium_usd', 'cb_premium_diff_btc']]
 )
 
 # --- 1.7 MVRV Z-Score ---
 df_mvrv_raw = (
     pd.read_csv(PATH_BTC + "2017_mvrv_z_score.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'Plot': 'btc_mvrv'})
-    .query("btc_mvrv.notna()")
-    [['Data_UTC', 'btc_mvrv']]
+    .rename(columns={'Plot': 'mvrv_close'})
+    .query("mvrv_close.isna() == False")
+    [['Data_UTC', 'mvrv_close']]
 )
 
-df_mvrv = (
+df_mvrv_diff = (
     df_periodo
+    # .assign(Data_UTC=lambda df: pd.to_datetime(df['Date'], utc=True))
     .merge(df_mvrv_raw, how='left', on='Data_UTC')
-    .assign(btc_mvrv_diff=lambda df: df['btc_mvrv'].diff())
-    [['Data_UTC', 'btc_mvrv_diff']]
+    .assign(mvrv_diff_btc=lambda df: df['mvrv_close'].diff())
+    .query("Data_UTC > '2017-01-02'")
+    [['Data_UTC', 'mvrv_close', 'mvrv_diff_btc']]
 )
 
 # --- 1.8 Whale Transaction Count ---
-df_whale_raw = (
+df_whale_transaction = (
     pd.read_csv(PATH_BTC + "2010_whale_transaction_count_btc_2.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['Date'], utc=True).dt.strftime("%Y-%m-%d"))
     .rename(columns={
-        'Whale Transaction Count (>1m USD)': 'btc_whale_tx_1m',
-        'Whale Transaction Count (>100k USD)': 'btc_whale_tx_100k'
+        'Whale Transaction Count (>1m USD)': 'whale_transaction_count_1M_btc',
+        'Whale Transaction Count (>100k USD)': 'whale_transaction_count_100k_btc'
     })
-    [['Data_UTC', 'btc_whale_tx_1m', 'btc_whale_tx_100k']]
+    [['Data_UTC', 'whale_transaction_count_1M_btc', 'whale_transaction_count_100k_btc']]
 )
 
-df_whale = (
+df_whale_transaction_log_ret = (
     df_periodo
-    .merge(df_whale_raw, how='left', on='Data_UTC')
+    .merge(df_whale_transaction, how='left', on='Data_UTC')
     .fillna(0)
     .assign(
-        btc_whale_100k_log_ret=lambda df: np.log1p(df['btc_whale_tx_100k']) - np.log1p(df['btc_whale_tx_100k'].shift(1)),
-        btc_whale_1m_log_ret=lambda df: np.log1p(df['btc_whale_tx_1m']) - np.log1p(df['btc_whale_tx_1m'].shift(1))
+        whale_100k_log_ret=lambda df: np.log(df['whale_transaction_count_100k_btc'] + 1) - np.log(df['whale_transaction_count_100k_btc'].shift(1) + 1),
+        whale_1m_log_ret=lambda df: np.log(df['whale_transaction_count_1M_btc'] + 1) - np.log(df['whale_transaction_count_1M_btc'].shift(1) + 1)
     )
-    [['Data_UTC', 'btc_whale_100k_log_ret', 'btc_whale_1m_log_ret']]
+    .query("Data_UTC > '2017-01-02'")
+    [['Data_UTC', 'whale_100k_log_ret', 'whale_transaction_count_100k_btc', 'whale_1m_log_ret', 'whale_transaction_count_1M_btc']]
 )
 
 # =============================================================================
-# 2. FEATURES ETH
+# 2. FEATURES MACRO
 # =============================================================================
 
-# --- 2.1 Transaction Volume ETH ---
-df_eth_volume_raw = (
-    pd.read_csv(PATH_ETH + "2015_transactionVolumeEth.csv")
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['Date'], utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'Transaction Volume (ETH)': 'eth_tx_volume'})
-    [['Data_UTC', 'eth_tx_volume']]
-)
-
-df_eth_volume = (
-    df_periodo
-    .merge(df_eth_volume_raw, how='left', on='Data_UTC')
-    .assign(eth_tx_volume=lambda df: df['eth_tx_volume'].fillna(0))
-    .assign(eth_vol_log_ret=lambda df: np.log1p(df['eth_tx_volume']) - np.log1p(df['eth_tx_volume'].shift(1)))
-    [['Data_UTC', 'eth_vol_log_ret']]
-)
-
-# --- 2.2 ETH Exchange Supply (% of Total Supply) ---
-df_eth_supply_raw = (
-    pd.read_csv(PATH_ETH + "2015_supply_held_by_exchanges_top_wallets_2.csv")
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['Date'], utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'Supply on Exchanges (as % of total supply) (ETH)': 'eth_supply_on_exchanges_pct'})
-    [['Data_UTC', 'eth_supply_on_exchanges_pct']]
-)
-
-df_eth_exchange_supply = (
-    df_periodo
-    .merge(df_eth_supply_raw, how='left', on='Data_UTC')
-    .assign(eth_exchange_supply_diff=lambda df: df['eth_supply_on_exchanges_pct'].diff())
-    [['Data_UTC', 'eth_exchange_supply_diff']]
-)
-
-# --- 2.3 Social Metrics ETH ---
-df_social_eth_raw = (
-    pd.read_csv(PATH_ETH + "eth_social_metrics.csv")
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['Date'], utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={
-        'Social Dominance (ETH)': 'eth_social_dominance',
-        'Social Volume (ETH)': 'eth_social_volume'
-    })
-    [['Data_UTC', 'eth_social_dominance', 'eth_social_volume']]
-)
-
-df_eth_social = (
-    df_periodo
-    .merge(df_social_eth_raw, how='left', on='Data_UTC')
-    .assign(eth_social_dom_diff=lambda df: df['eth_social_dominance'].diff())
-    .assign(eth_social_vol_log_ret=lambda df: np.log1p(df['eth_social_volume']) - np.log1p(df['eth_social_volume'].shift(1)))
-    [['Data_UTC', 'eth_social_dom_diff', 'eth_social_vol_log_ret']]
-)
-
-# =============================================================================
-# 3. FEATURES MACRO
-# =============================================================================
-
-# --- 3.1 S&P 500 ---
+# --- 2.1 S&P 500 ---
 df_sp500 = (
     pd.read_csv(PATH_MACRO + "2014_SP500_PRICE.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], utc=True).dt.strftime("%Y-%m-%d"))
@@ -244,15 +207,17 @@ df_sp500 = (
     [['Data_UTC', 'spx_close']]
 )
 
-df_spx_log_ret = (
+df_sp500_log_ret = (
     df_periodo
     .merge(df_sp500, how='left', on='Data_UTC')
     .assign(spx_close=lambda df: df['spx_close'].ffill())
-    .assign(spx_log_ret=lambda df: np.log1p(df['spx_close']) - np.log1p(df['spx_close'].shift(1)))
-    [['Data_UTC', 'spx_log_ret']]
+    .assign(spx_log_ret=lambda df: np.log(df['spx_close']) - np.log(df['spx_close'].shift(1)))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2017-01-03'")
+    [['Data_UTC', 'spx_close', 'spx_log_ret']]
 )
 
-# --- 3.2 DXY (US Dollar Index) ---
+# --- 2.2 DXY (US Dollar Index) ---
 df_dxy = (
     pd.read_csv(PATH_MACRO + "201501_DXY.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
@@ -264,27 +229,31 @@ df_dxy_log_ret = (
     df_periodo
     .merge(df_dxy, how='left', on='Data_UTC')
     .assign(dxy_close=lambda df: df['dxy_close'].ffill())
-    .assign(dxy_log_ret=lambda df: np.log1p(df['dxy_close']) - np.log1p(df['dxy_close'].shift(1)))
-    [['Data_UTC', 'dxy_log_ret']]
+    .assign(dxy_log_ret=lambda df: np.log(df['dxy_close']) - np.log(df['dxy_close'].shift(1)))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2017-01-03'")
+    [['Data_UTC', 'dxy_close', 'dxy_log_ret']]
 )
 
-# --- 3.3 NASDAQ ---
+# --- 2.3 NASDAQ ---
 df_nasdaq = (
     pd.read_csv(PATH_MACRO + "201501_NASDAQ.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'close': 'nasdaq_close'})
-    [['Data_UTC', 'nasdaq_close']]
+    .rename(columns={'close': 'ndx_close'})
+    [['Data_UTC', 'ndx_close']]
 )
 
 df_nasdaq_log_ret = (
     df_periodo
     .merge(df_nasdaq, how='left', on='Data_UTC')
-    .assign(nasdaq_close=lambda df: df['nasdaq_close'].ffill())
-    .assign(nasdaq_log_ret=lambda df: np.log1p(df['nasdaq_close']) - np.log1p(df['nasdaq_close'].shift(1)))
-    [['Data_UTC', 'nasdaq_log_ret']]
+    .assign(ndx_close=lambda df: df['ndx_close'].ffill())
+    .assign(ndx_log_ret=lambda df: np.log(df['ndx_close']) - np.log(df['ndx_close'].shift(1)))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2017-01-03'")
+    [['Data_UTC', 'ndx_close', 'ndx_log_ret']]
 )
 
-# --- 3.4 GOLD ---
+# --- 2.4 GOLD ---
 df_gold = (
     pd.read_csv(PATH_MACRO + "201501_PRICE_GOLD.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
@@ -296,27 +265,30 @@ df_gold_log_ret = (
     df_periodo
     .merge(df_gold, how='left', on='Data_UTC')
     .assign(gold_close=lambda df: df['gold_close'].ffill())
-    .assign(gold_log_ret=lambda df: np.log1p(df['gold_close']) - np.log1p(df['gold_close'].shift(1)))
-    [['Data_UTC', 'gold_log_ret']]
+    .assign(gold_log_ret=lambda df: np.log(df['gold_close']) - np.log(df['gold_close'].shift(1)))
+    .query("Data_UTC > '2017-01-03'")
+    [['Data_UTC', 'gold_close', 'gold_log_ret']]
 )
 
-# --- 3.5 US10Y (Treasury Yield) ---
+# --- 2.5 US10Y (Treasury Yield) ---
 df_us10y = (
     pd.read_csv(PATH_MACRO + "201501_US10Y.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'close': 'us10y_yield'})
-    [['Data_UTC', 'us10y_yield']]
+    .rename(columns={'close': 'us10y_close'})
+    [['Data_UTC', 'us10y_close']]
 )
 
 df_us10y_diff = (
     df_periodo
     .merge(df_us10y, how='left', on='Data_UTC')
-    .assign(us10y_yield=lambda df: df['us10y_yield'].ffill())
-    .assign(us10y_diff=lambda df: df['us10y_yield'].diff())
-    [['Data_UTC', 'us10y_diff']]
+    .assign(us10y_close=lambda df: df['us10y_close'].ffill())
+    .assign(us10y_diff=lambda df: df['us10y_close'].diff())
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2017-01-03'")
+    [['Data_UTC', 'us10y_close', 'us10y_diff']]
 )
 
-# --- 3.6 VIX ---
+# --- 2.6 VIX ---
 df_vix = (
     pd.read_csv(PATH_MACRO + "201501_VIX.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
@@ -328,31 +300,35 @@ df_vix_log_ret = (
     df_periodo
     .merge(df_vix, how='left', on='Data_UTC')
     .assign(vix_close=lambda df: df['vix_close'].ffill())
-    .assign(vix_log_ret=lambda df: np.log1p(df['vix_close']) - np.log1p(df['vix_close'].shift(1)))
-    [['Data_UTC', 'vix_log_ret']]
+    .assign(vix_log_ret=lambda df: np.log(df['vix_close']) - np.log(df['vix_close'].shift(1)))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2017-01-03'")
+    [['Data_UTC', 'vix_close', 'vix_log_ret']]
 )
 
 # =============================================================================
-# 4. FEATURES MKCAP
+# 3. FEATURES MKCAP
 # =============================================================================
 
-# --- 4.1 TOTAL3 (Altcoin Market Cap excl. BTC, ETH, Stables) ---
+# --- 3.1 TOTAL3 (Altcoin Market Cap excl. BTC, ETH, Stables) ---
 df_total3 = (
     pd.read_csv(PATH_MKCAP + "201501_mkcap_total3.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'close': 'total3_mkcap'})
-    [['Data_UTC', 'total3_mkcap']]
+    .rename(columns={'close': 'total3_close'})
+    [['Data_UTC', 'total3_close']]
 )
 
 df_total3_log_ret = (
     df_periodo
     .merge(df_total3, how='left', on='Data_UTC')
-    .assign(total3_mkcap=lambda df: df['total3_mkcap'].ffill())
-    .assign(total3_log_ret=lambda df: np.log1p(df['total3_mkcap']) - np.log1p(df['total3_mkcap'].shift(1)))
-    [['Data_UTC', 'total3_log_ret']]
+    .assign(total3_close=lambda df: df['total3_close'].ffill())
+    .assign(total3_log_ret=lambda df: np.log(df['total3_close']) - np.log(df['total3_close'].shift(1)))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2017-01-03'")
+    [['Data_UTC', 'total3_close', 'total3_log_ret']]
 )
 
-# --- 4.2 SSR (Stablecoin Supply Ratio) ---
+# --- 3.2 SSR (Stablecoin Supply Ratio) ---
 df_ssr = (
     pd.read_csv(PATH_MKCAP + "201404_ssr.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], utc=True).dt.strftime("%Y-%m-%d"))
@@ -362,29 +338,33 @@ df_ssr = (
 df_ssr_diff = (
     df_periodo
     .merge(df_ssr, how='left', on='Data_UTC')
-    .assign(SSR=lambda df: df['SSR'].ffill())
-    .assign(ssr_diff=lambda df: df['SSR'].diff())
-    [['Data_UTC', 'ssr_diff']]
+    .assign(ssr=lambda df: df['SSR'].ffill())
+    .assign(ssr_diff=lambda df: df['ssr'].diff())
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2017-01-03'")
+    [['Data_UTC', 'ssr', 'ssr_diff']]
 )
 
-# --- 4.3 Flippening Ratio (ETH/BTC) ---
+# --- 3.3 Flippening Ratio (ETH/BTC) ---
 df_flippening = (
     pd.read_csv(PATH_MKCAP + "201809_Flippening_Ratio_Diff.csv")
     .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'close': 'flippening_ratio'})
-    [['Data_UTC', 'flippening_ratio']]
+    .rename(columns={'close': 'flippening_close'})
+    [['Data_UTC', 'flippening_close']]
 )
 
 df_flippening_diff = (
     df_periodo
     .merge(df_flippening, how='left', on='Data_UTC')
-    .assign(flippening_ratio=lambda df: df['flippening_ratio'].ffill())
-    .assign(flippening_ratio_diff=lambda df: df['flippening_ratio'].diff())
-    [['Data_UTC', 'flippening_ratio_diff']]
+    .assign(flippening_close=lambda df: df['flippening_close'].ffill())
+    .assign(flippening_close_diff=lambda df: df['flippening_close'].diff())
+    .query("Data_UTC > '2020-01-01'")
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    [['Data_UTC', 'flippening_close', 'flippening_close_diff']]
 )
 
 # =============================================================================
-# 5. FEATURES SOCIAL
+# 4. FEATURES SOCIAL
 # =============================================================================
 
 df_social = pd.read_csv(PATH_SOCIAL + "2012_btc_altcoin_social_metrics.csv")
@@ -404,58 +384,109 @@ df_social_tratado = (
     df_periodo
     .merge(df_social, how='left', on='Data_UTC')
     .sort_values('Data_UTC')
-    # Transformação Logarítmica
+    # 1. Transformação Logarítmica (CRUCIAL para dados de contagem)
     .assign(btc_log_vol=lambda df: np.log1p(df['btc_social_volume']))
     .assign(alt_log_vol_1=lambda df: np.log1p(df['alt_social_volume']))
     .assign(alt_log_vol_2=lambda df: np.log1p(df['alt_social_volume_2']))
-    # Social Volume e Dominance (Soma dos Altcoins)
+    .assign(alt_log_dom_1=lambda df: np.log1p(df['alt_social_dominance']))
+    .assign(alt_log_dom_2=lambda df: np.log1p(df['alt_social_dominance_2']))
+    # 2. Social Volume e Dominance (Soma dos Altcoins)
     .assign(alt_total_log_vol=lambda df: df['alt_log_vol_1'] + df['alt_log_vol_2'])
-    # Spread de Intensidade (BTC vs Alts)
+    .assign(alt_total_log_dom=lambda df: df['alt_log_dom_1'] + df['alt_log_dom_2'])
+    # 3. O Spread de Intensidade (Feature Principal)
     .assign(social_vol_log_spread=lambda df: df['btc_log_vol'] - df['alt_total_log_vol'])
-    # Momentum (Derivada do Spread)
+    # 4. Aceleração do Hype (Derivada)
     .assign(social_momentum=lambda df: df['social_vol_log_spread'].diff())
-    # Z-Score Total do Mercado (Euforia vs Apatia)
-    .assign(total_market_noise_z=lambda df:
-            ((df['btc_log_vol'] + df['alt_total_log_vol']) - (df['btc_log_vol'] + df['alt_total_log_vol']).rolling(30).mean()) /
-            (df['btc_log_vol'] + df['alt_total_log_vol']).rolling(30).std())
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
     .fillna(0)
-    [['Data_UTC', 'social_vol_log_spread', 'social_momentum', 'total_market_noise_z']]
+    [['Data_UTC', 'social_vol_log_spread', 'social_momentum']]
+)
+
+# =============================================================================
+# 5. FEATURES STABLECOINS
+# =============================================================================
+
+# --- 5.1 USDT Dominance ---
+df_usdt_raw = (
+    pd.read_csv(PATH_STABLE + "201501_dominance_usdt.csv")
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
+    .rename(columns={'close': 'usdt_dominance'})
+    [['Data_UTC', 'usdt_dominance']]
+)
+
+df_usdt_log_ret = (
+    df_periodo
+    .merge(df_usdt_raw, how='left', on='Data_UTC')
+    .assign(usdt_dominance=lambda df: df['usdt_dominance'].ffill())
+    .assign(usdt_log_ret=lambda df: np.log(df['usdt_dominance']) - np.log(df['usdt_dominance'].shift(1)))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2017-01-03'")
+    [['Data_UTC', 'usdt_dominance', 'usdt_log_ret']]
+)
+
+# --- 5.2 USDC Dominance ---
+df_usdc_raw = (
+    pd.read_csv(PATH_STABLE + "201901_dominance_usdc.csv")
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
+    .rename(columns={'close': 'usdc_dominance'})
+    [['Data_UTC', 'usdc_dominance']]
+)
+
+df_usdc_log_ret = (
+    df_periodo
+    .merge(df_usdc_raw, how='left', on='Data_UTC')
+    .assign(usdc_dominance=lambda df: df['usdc_dominance'].ffill())
+    .assign(usdc_log_ret=lambda df: np.log(df['usdc_dominance']) - np.log(df['usdc_dominance'].shift(1)))
+    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .query("Data_UTC > '2017-01-03'")
+    [['Data_UTC', 'usdc_dominance', 'usdc_log_ret']]
 )
 
 # =============================================================================
 # CONSOLIDAÇÃO FINAL - LEFT JOIN DE TODAS AS FEATURES
 # =============================================================================
 
+# Função auxiliar para garantir Data_UTC como string
+def to_str_date(df):
+    df = df.copy()
+    if pd.api.types.is_datetime64_any_dtype(df['Data_UTC']):
+        df['Data_UTC'] = df['Data_UTC'].dt.strftime("%Y-%m-%d")
+    return df
+
+# Preparar df_periodo com is_weekend como base (Data_UTC como string)
+df_base = df_periodo[['Data_UTC', 'is_weekend']].copy()
+
 df_consolidado = (
-    df_periodo
+    df_base
     # BTC Features
-    .merge(df_btc_rvi, how='left', on='Data_UTC')
-    .merge(df_btc_hv, how='left', on='Data_UTC')
-    .merge(df_funding_tratado, how='left', on='Data_UTC')
-    .merge(df_miner_position, how='left', on='Data_UTC')
-    .merge(df_btc_exchange_supply, how='left', on='Data_UTC')
-    .merge(df_btc_spx_corr, how='left', on='Data_UTC')
-    .merge(df_coinbase_premium_diff, how='left', on='Data_UTC')
-    .merge(df_mvrv, how='left', on='Data_UTC')
-    .merge(df_whale, how='left', on='Data_UTC')
-    # ETH Features
-    .merge(df_eth_volume, how='left', on='Data_UTC')
-    .merge(df_eth_exchange_supply, how='left', on='Data_UTC')
-    .merge(df_eth_social, how='left', on='Data_UTC')
+    .merge(to_str_date(df_btc_rvi), how='left', on='Data_UTC')
+    .merge(to_str_date(df_funding_tratado), how='left', on='Data_UTC')
+    .merge(to_str_date(df_supply_held_by_miners_btc), how='left', on='Data_UTC')
+    .merge(to_str_date(df_exchange_supply_btc), how='left', on='Data_UTC')
+    .merge(to_str_date(df_sp500_btc_divergence_btc), how='left', on='Data_UTC')
+    .merge(to_str_date(df_coinbase_premium_diff), how='left', on='Data_UTC')
+    .merge(to_str_date(df_mvrv_diff), how='left', on='Data_UTC')
+    .merge(to_str_date(df_whale_transaction_log_ret), how='left', on='Data_UTC')
     # MACRO Features
-    .merge(df_spx_log_ret, how='left', on='Data_UTC')
-    .merge(df_dxy_log_ret, how='left', on='Data_UTC')
-    .merge(df_nasdaq_log_ret, how='left', on='Data_UTC')
-    .merge(df_gold_log_ret, how='left', on='Data_UTC')
-    .merge(df_us10y_diff, how='left', on='Data_UTC')
-    .merge(df_vix_log_ret, how='left', on='Data_UTC')
+    .merge(to_str_date(df_sp500_log_ret), how='left', on='Data_UTC')
+    .merge(to_str_date(df_dxy_log_ret), how='left', on='Data_UTC')
+    .merge(to_str_date(df_nasdaq_log_ret), how='left', on='Data_UTC')
+    .merge(to_str_date(df_gold_log_ret), how='left', on='Data_UTC')
+    .merge(to_str_date(df_us10y_diff), how='left', on='Data_UTC')
+    .merge(to_str_date(df_vix_log_ret), how='left', on='Data_UTC')
     # MKCAP Features
-    .merge(df_total3_log_ret, how='left', on='Data_UTC')
-    .merge(df_ssr_diff, how='left', on='Data_UTC')
-    .merge(df_flippening_diff, how='left', on='Data_UTC')
+    .merge(to_str_date(df_total3_log_ret), how='left', on='Data_UTC')
+    .merge(to_str_date(df_ssr_diff), how='left', on='Data_UTC')
+    .merge(to_str_date(df_flippening_diff), how='left', on='Data_UTC')
     # SOCIAL Features
-    .merge(df_social_tratado, how='left', on='Data_UTC')
+    .merge(to_str_date(df_social_tratado), how='left', on='Data_UTC')
+    # STABLE Features
+    .merge(to_str_date(df_usdt_log_ret), how='left', on='Data_UTC')
+    .merge(to_str_date(df_usdc_log_ret), how='left', on='Data_UTC')
 )
+
+# Converter Data_UTC para datetime no final
+df_consolidado['Data_UTC'] = pd.to_datetime(df_consolidado['Data_UTC'])
 
 # =============================================================================
 # DICIONÁRIO DE FEATURES (REFERÊNCIA)
@@ -464,48 +495,68 @@ df_consolidado = (
 FEATURES CONSOLIDADAS:
 ======================
 
+BASE:
+-----
+- Data_UTC: Data em formato datetime
+- is_weekend: Dummy indicando se é fim de semana (1 = Sábado/Domingo, 0 = Dia útil)
+
 BTC (Bitcoin On-Chain & Technical):
 -----------------------------------
-- btc_rvi_diff: Diff do RVI (Relative Volatility Index) - Direção da volatilidade
-- btc_hv_log_ret: Log-retorno da Volatilidade Histórica
-- btc_funding_rate_mean: Média das Funding Rates (BitMEX, Binance, DyDx, Deribit)
-- btc_funding_rate_diff: Diff da Funding Rate - Mudança na alavancagem
-- btc_miner_net_pos_change: Log-retorno do Supply dos Mineradores - Acumulação/Distribuição
-- btc_exchange_supply_diff: Diff do Supply em Exchanges (%) - Fluxo para/das exchanges
+- rvi_close: Valor do RVI (Relative Volatility Index)
+- rvi_diff: Diff do RVI - Direção da volatilidade
+- total_funding_rate_btc: Média das Funding Rates (BitMEX, Binance, DyDx, Deribit)
+- funding_rate_diff_btc: Diff da Funding Rate - Mudança na alavancagem
+- supply_held_by_miners_btc: Supply mantido pelos mineradores
+- miner_net_pos_change: Log-retorno do Supply dos Mineradores - Acumulação/Distribuição
+- supply_on_exchanges_perc_btc: Supply em Exchanges (% do total)
+- exchange_supply_diff_btc: Diff do Supply em Exchanges (%) - Fluxo para/das exchanges
+- spx_price: Preço do S&P 500 (para correlação)
 - btc_log_ret: Log-retorno do preço do BTC
 - btc_spx_corr_30d: Correlação rolling 30d entre BTC e S&P500
-- btc_coinbase_premium_diff: Diff do Coinbase Premium - Demanda institucional US
-- btc_mvrv_diff: Diff do MVRV Z-Score - Sobre/subvalorização
-- btc_whale_100k_log_ret: Log-retorno de transações whale >100k USD
-- btc_whale_1m_log_ret: Log-retorno de transações whale >1M USD
-
-ETH (Ethereum On-Chain):
-------------------------
-- eth_vol_log_ret: Log-retorno do volume de transações ETH
-- eth_exchange_supply_diff: Diff do Supply em Exchanges (%) - Net Flow
-- eth_social_dom_diff: Diff da Dominância Social do ETH
-- eth_social_vol_log_ret: Log-retorno do Volume Social do ETH
+- cb_premium_usd: Coinbase Premium em USD
+- cb_premium_diff_btc: Diff do Coinbase Premium - Demanda institucional US
+- mvrv_close: Valor do MVRV Z-Score
+- mvrv_diff_btc: Diff do MVRV Z-Score - Sobre/subvalorização
+- whale_100k_log_ret: Log-retorno de transações whale >100k USD
+- whale_transaction_count_100k_btc: Contagem de transações whale >100k USD
+- whale_1m_log_ret: Log-retorno de transações whale >1M USD
+- whale_transaction_count_1M_btc: Contagem de transações whale >1M USD
 
 MACRO (Indicadores Macroeconômicos):
 ------------------------------------
+- spx_close: Preço de fechamento do S&P 500
 - spx_log_ret: Log-retorno do S&P 500
-- dxy_log_ret: Log-retorno do DXY (US Dollar Index)
-- nasdaq_log_ret: Log-retorno do NASDAQ
+- dxy_close: Preço de fechamento do DXY (US Dollar Index)
+- dxy_log_ret: Log-retorno do DXY
+- ndx_close: Preço de fechamento do NASDAQ
+- ndx_log_ret: Log-retorno do NASDAQ
+- gold_close: Preço de fechamento do Ouro
 - gold_log_ret: Log-retorno do Ouro
+- us10y_close: Yield dos títulos US10Y
 - us10y_diff: Diff da taxa de juros US10Y (pontos base)
-- vix_log_ret: Log-retorno do VIX (Índice de Medo)
+- vix_close: Preço de fechamento do VIX (Índice do Medo)
+- vix_log_ret: Log-retorno do VIX
 
 MKCAP (Market Cap Metrics):
 ---------------------------
-- total3_log_ret: Log-retorno do TOTAL3 (Altcoins excl. BTC/ETH/Stables)
-- ssr_diff: Diff do SSR (Stablecoin Supply Ratio) - Poder de compra
-- flippening_ratio_diff: Diff do Flippening Ratio (ETH/BTC)
+- total3_close: Market Cap do TOTAL3 (Altcoins excl. BTC/ETH/Stables)
+- total3_log_ret: Log-retorno do TOTAL3
+- ssr: Stablecoin Supply Ratio
+- ssr_diff: Diff do SSR - Poder de compra
+- flippening_close: Razão ETH/BTC (Flippening Ratio)
+- flippening_close_diff: Diff do Flippening Ratio
 
 SOCIAL (Sentimento de Mercado):
 -------------------------------
 - social_vol_log_spread: Spread log do volume social BTC vs Altcoins
 - social_momentum: Diff do spread (aceleração do hype)
-- total_market_noise_z: Z-Score do volume social total (euforia/apatia)
+
+STABLECOINS (Liquidez):
+-----------------------
+- usdt_dominance: Dominância do USDT (%)
+- usdt_log_ret: Log-retorno da dominância do USDT
+- usdc_dominance: Dominância do USDC (%)
+- usdc_log_ret: Log-retorno da dominância do USDC
 """
 
 # =============================================================================
