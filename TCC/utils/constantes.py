@@ -38,26 +38,24 @@ df_periodo = (pd.DataFrame({"Data_UTC": pd.date_range(start=DATA_INICIO, end=DAT
              )
 
 
-df_btc_price = pd.read_csv(rf"/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_btc/raw/price_btc.csv")
-df_btc_price['Data_UTC'] = pd.to_datetime(df_btc_price['time'], unit='s', utc=True,).dt.strftime("%Y-%m-%d")
+# df_btc_price = pd.read_csv(rf"/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_btc/raw/price_btc.csv")
+# df_btc_price['Data_UTC'] = pd.to_datetime(df_btc_price['time'], unit='s', utc=True,).dt.strftime("%Y-%m-%d")
 
-df_target_price =(
-    df_periodo
-        .merge(df_btc_price[['Data_UTC','close']], how='left', on='Data_UTC')
-        .assign(Data_UTC = lambda df: pd.to_datetime(df['Data_UTC']))
-        .rename(columns={'close':'btc_price'})
-        .assign(btc_log_ret = lambda df: np.log(df['btc_price']) - np.log(df['btc_price'].shift(1)))
-        .query("Data_UTC > '2016-12-31'")
-        [['Data_UTC','btc_price']]
+# df_target_price =(
+#     df_periodo
+#         .merge(df_btc_price[['Data_UTC','close']], how='left', on='Data_UTC')
+#         .assign(Data_UTC = lambda df: pd.to_datetime(df['Data_UTC']))
+#         .rename(columns={'close':'btc_price'})
+#         .assign(btc_log_ret = lambda df: np.log(df['btc_price']) - np.log(df['btc_price'].shift(1)))
+#         .query("Data_UTC > '2016-12-31'")
+#         [['Data_UTC','btc_price']]
 
-)
-df_target_price
+# )
+# df_target_price
 
-df_features = pd.read_csv("/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/tabela_consolidada_new_3.csv")
-# df_features = pd.read_csv("/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/tabela_consolidada_new.csv")
-# df_features = pd.read_csv("/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/tabela_consolidada.csv")
+df_features = pd.read_csv("/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/tabela_consolidada.csv").query("Data_UTC > '2017-01-03'").drop_duplicates()
 df_features['Data_UTC'] = pd.to_datetime(df_features['Data_UTC'])
-# df_features = df_features.merge(df_target_price, how='right', on='Data_UTC')
+# df_features = df_features.set_index('Data_UTC')
 
 
 def print_dataframe_info(df, nome_df="DataFrame"):
