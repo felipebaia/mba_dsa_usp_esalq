@@ -36,6 +36,7 @@ PATH_STABLE = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_stabl
 # --- 1.1 RVI (Relative Volatility Index) ---
 df_btc_price = pd.read_csv(PATH_BTC + "price_btc.csv")
 df_btc_price['Data_UTC'] = pd.to_datetime(df_btc_price['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d")
+df_btc_price = df_btc_price.rename(columns={'close': 'btc_price_close'})
 
 df_btc_rvi = (
     df_periodo
@@ -126,7 +127,7 @@ df_sp500_btc_divergence_btc = (
     .merge(df_sp500_raw, how='left', on='Data_UTC')
     .merge(df_btc_price, how='left', on='Data_UTC')
     .assign(spx_price=lambda df: df['spx_price'].ffill())
-    .assign(btc_log_ret=lambda df: np.log(df['close'] / df['close'].shift(1)))
+    .assign(btc_log_ret=lambda df: np.log(df['btc_price_close'] / df['btc_price_close'].shift(1)))
     .assign(spx_log_ret=lambda df: np.log(df['spx_price'] / df['spx_price'].shift(1)))
     .assign(btc_spx_corr_30d=lambda df: df['btc_log_ret'].rolling(window=30).corr(df['spx_log_ret']))
     .assign(btc_spx_corr_30d=lambda df: df['btc_spx_corr_30d'].bfill())
@@ -134,7 +135,7 @@ df_sp500_btc_divergence_btc = (
     .assign(Data_UTC=lambda df: df['Data_UTC'].dt.strftime("%Y-%m-%d"))
     .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
     .query("Data_UTC > '2016-12-31'")
-    [['Data_UTC', 'spx_price', 'btc_log_ret', 'btc_spx_corr_30d']]
+    [['Data_UTC', 'spx_price', 'btc_price_close','btc_log_ret', 'btc_spx_corr_30d']]
 )
 
 # --- 1.6 Coinbase Premium Index ---
@@ -219,9 +220,8 @@ df_sp500_log_ret = (
 
 # --- 2.2 DXY (US Dollar Index) ---
 df_dxy = (
-    pd.read_csv(PATH_MACRO + "201501_DXY.csv")
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'close': 'dxy_close'})
+    pd.read_csv(PATH_MACRO + "dxy_new.csv")
+    .rename(columns={'dxy_close_new': 'dxy_close'})
     [['Data_UTC', 'dxy_close']]
 )
 
@@ -237,20 +237,21 @@ df_dxy_log_ret = (
 
 # --- 2.3 NASDAQ ---
 df_nasdaq = (
-    pd.read_csv(PATH_MACRO + "201501_NASDAQ.csv")
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'close': 'ndx_close'})
-    [['Data_UTC', 'ndx_close']]
+    pd.read_csv(PATH_MACRO + "nasdaq.csv")
+    .assign(Data_UTC = lambda df: pd.to_datetime(df['Date']).dt.strftime("%Y-%m-%d"))
+    .rename(columns={'Close/Last': 'nasdaq_close'}) 
+
+    [['Data_UTC', 'nasdaq_close']] 
 )
 
 df_nasdaq_log_ret = (
     df_periodo
     .merge(df_nasdaq, how='left', on='Data_UTC')
-    .assign(ndx_close=lambda df: df['ndx_close'].ffill())
-    .assign(ndx_log_ret=lambda df: np.log(df['ndx_close']) - np.log(df['ndx_close'].shift(1)))
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
+    .assign(nasdaq_close = lambda df: df['nasdaq_close'].ffill())
+    .assign(nasdaq_log_ret = lambda df: np.log(df['nasdaq_close']) - np.log(df['nasdaq_close'].shift(1)))
+    .assign(Data_UTC = lambda df: pd.to_datetime(df['Data_UTC']))
     .query("Data_UTC > '2017-01-03'")
-    [['Data_UTC', 'ndx_close', 'ndx_log_ret']]
+    [['Data_UTC','nasdaq_close','nasdaq_log_ret']]
 )
 
 # --- 2.4 GOLD ---
