@@ -24,6 +24,7 @@ from TCC.utils.constantes import *
 # PATHS DOS ARQUIVOS RAW
 # =============================================================================
 PATH_BTC = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_btc/raw/"
+PATH_ETH = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_eth/raw/"
 PATH_MACRO = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_macro/raw/"
 PATH_MKCAP = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_mkcap/raw/"
 PATH_SOCIAL = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_social/raw/"
@@ -37,6 +38,7 @@ PATH_STABLE = "/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_stabl
 df_btc_price = pd.read_csv(PATH_BTC + "price_btc.csv")
 df_btc_price['Data_UTC'] = pd.to_datetime(df_btc_price['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d")
 df_btc_price = df_btc_price.rename(columns={'close': 'btc_price_close'})
+df_btc_price = df_btc_price.assign(btc_log_ret=lambda df: np.log(df['btc_price_close'] / df['btc_price_close'].shift(1)))
 
 df_btc_rvi = (
     df_periodo
@@ -46,7 +48,7 @@ df_btc_rvi = (
     .rename(columns={'RVI': 'rvi_close'})
     .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']).dt.strftime("%Y-%m-%d"))
     .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
-    [['Data_UTC', 'rvi_close', 'rvi_diff']]
+    [['Data_UTC','btc_price_close', 'btc_log_ret', 'rvi_close', 'rvi_diff']]
 )
 
 # --- 1.2 Funding Rate (Futuros) ---
@@ -113,29 +115,25 @@ df_exchange_supply_btc = (
     .query("Data_UTC > '2016-12-31'")
     [['Data_UTC', 'supply_on_exchanges_perc_btc', 'exchange_supply_diff_btc']]
 )
-
-# --- 1.5 SPX-BTC Rolling Correlation (30d) ---
-df_sp500_raw = (
-    pd.read_csv(PATH_MACRO + "2014_SP500_PRICE.csv")
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'close': 'spx_price'})
-    [['Data_UTC', 'spx_price']]
+# --- 1.5 Preço da ETH ---
+df_eth_volume = (
+    pd.read_csv(PATH_ETH + "2015_transactionVolumeEth.csv")
+    .assign(Data_UTC = lambda df: pd.to_datetime(df['Date'], utc=True))
+    .assign(Data_UTC = lambda df: df['Data_UTC'].dt.strftime("%Y-%m-%d"))
+    .rename(columns={'Transaction Volume (ETH)': 'transaction_volume_eth',
+                        'Transaction Volume USD (ETH)': 'Transaction_Volume_USD_ETH'}) 
+    [['Data_UTC', 'transaction_volume_eth']] 
 )
 
-df_sp500_btc_divergence_btc = (
+df_eth_volume_diff =(
     df_periodo
-    .merge(df_sp500_raw, how='left', on='Data_UTC')
-    .merge(df_btc_price, how='left', on='Data_UTC')
-    .assign(spx_price=lambda df: df['spx_price'].ffill())
-    .assign(btc_log_ret=lambda df: np.log(df['btc_price_close'] / df['btc_price_close'].shift(1)))
-    .assign(spx_log_ret=lambda df: np.log(df['spx_price'] / df['spx_price'].shift(1)))
-    .assign(btc_spx_corr_30d=lambda df: df['btc_log_ret'].rolling(window=30).corr(df['spx_log_ret']))
-    .assign(btc_spx_corr_30d=lambda df: df['btc_spx_corr_30d'].bfill())
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
-    .assign(Data_UTC=lambda df: df['Data_UTC'].dt.strftime("%Y-%m-%d"))
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
-    .query("Data_UTC > '2016-12-31'")
-    [['Data_UTC', 'spx_price', 'btc_price_close','btc_log_ret', 'btc_spx_corr_30d']]
+        .merge(df_eth_volume, how='left', on='Data_UTC')
+        .assign(transaction_volume_eth = lambda df: df['transaction_volume_eth'].replace(0, np.nan))
+        .assign(transaction_volume_eth = lambda df: df['transaction_volume_eth'].fillna(method='ffill'))
+        .assign(eth_vol_log_ret = lambda df: np.log(df['transaction_volume_eth']) - np.log(df['transaction_volume_eth'].shift(1)))
+        .query("Data_UTC > '2017-01-02'")
+        [['Data_UTC','transaction_volume_eth','eth_vol_log_ret']]
+
 )
 
 # --- 1.6 Coinbase Premium Index ---
@@ -383,25 +381,37 @@ df_social = df_social.rename(columns={
 
 df_social_tratado = (
     df_periodo
-    .merge(df_social, how='left', on='Data_UTC')
-    .sort_values('Data_UTC')
-    # 1. Transformação Logarítmica (CRUCIAL para dados de contagem)
-    .assign(btc_log_vol=lambda df: np.log1p(df['btc_social_volume']))
-    .assign(alt_log_vol_1=lambda df: np.log1p(df['alt_social_volume']))
-    .assign(alt_log_vol_2=lambda df: np.log1p(df['alt_social_volume_2']))
-    .assign(alt_log_dom_1=lambda df: np.log1p(df['alt_social_dominance']))
-    .assign(alt_log_dom_2=lambda df: np.log1p(df['alt_social_dominance_2']))
-    # 2. Social Volume e Dominance (Soma dos Altcoins)
-    .assign(alt_total_log_vol=lambda df: df['alt_log_vol_1'] + df['alt_log_vol_2'])
-    .assign(alt_total_log_dom=lambda df: df['alt_log_dom_1'] + df['alt_log_dom_2'])
-    # 3. O Spread de Intensidade (Feature Principal)
-    .assign(social_vol_log_spread=lambda df: df['btc_log_vol'] - df['alt_total_log_vol'])
-    # 4. Aceleração do Hype (Derivada)
-    .assign(social_momentum=lambda df: df['social_vol_log_spread'].diff())
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
-    .fillna(0)
-    [['Data_UTC', 'social_vol_log_spread', 'social_momentum']]
+        .merge(df_social, how='left', on='Data_UTC')
+        .sort_values('Data_UTC')
+        .assign(Data_UTC = lambda df: pd.to_datetime(df['Data_UTC']))
+        
+        # 1. Tratamento de Volume (Escala Logarítmica para normalizar contagem)
+        .assign(btc_log_vol = lambda df: np.log1p(df['btc_social_volume']))
+        .assign(alt_total_log_vol = lambda df: np.log1p(df['alt_social_volume'] + df['alt_social_volume_2']))
+        
+        # 4. Intensidade do Barulho (Z-Score ou Spread de Volume)
+        # Indica se o mercado está em um momento de alta atividade (Hype)
+        .assign(social_vol_spread = lambda df: df['btc_log_vol'] - df['alt_total_log_vol'])
+        
+        # 5. Momentum e Aceleração (Derivadas para Séries Temporais)
+        # Útil para modelos de Causalidade de Granger ou Regressões Dinâmicas
+        .assign(vol_acceleration = lambda df: df['social_vol_spread'].diff())
+
+        .assign(social_vol_spread_ma7 = lambda df: df['social_vol_spread'].rolling(window=7).mean())
+
+        .fillna(0)
+
+        # Seleção das colunas chave para o modelo de Data Science
+        [[
+            'Data_UTC',
+            'btc_social_volume',
+            'btc_log_vol',
+            'social_vol_spread',       # Intensidade relativa (Volume)
+            'vol_acceleration'         # Explosão de interesse
+        ]]
 )
+
+df_social_tratado
 
 # =============================================================================
 # 5. FEATURES STABLECOINS
@@ -464,10 +474,11 @@ df_consolidado = (
     .merge(to_str_date(df_funding_tratado), how='left', on='Data_UTC')
     .merge(to_str_date(df_supply_held_by_miners_btc), how='left', on='Data_UTC')
     .merge(to_str_date(df_exchange_supply_btc), how='left', on='Data_UTC')
-    .merge(to_str_date(df_sp500_btc_divergence_btc), how='left', on='Data_UTC')
     .merge(to_str_date(df_coinbase_premium_diff), how='left', on='Data_UTC')
     .merge(to_str_date(df_mvrv_diff), how='left', on='Data_UTC')
     .merge(to_str_date(df_whale_transaction_log_ret), how='left', on='Data_UTC')
+    # ETH Features
+    .merge(to_str_date(df_eth_volume_diff), how='left', on='Data_UTC')
     # MACRO Features
     .merge(to_str_date(df_sp500_log_ret), how='left', on='Data_UTC')
     .merge(to_str_date(df_dxy_log_ret), how='left', on='Data_UTC')
@@ -511,7 +522,7 @@ BTC (Bitcoin On-Chain & Technical):
 - miner_net_pos_change: Log-retorno do Supply dos Mineradores - Acumulação/Distribuição
 - supply_on_exchanges_perc_btc: Supply em Exchanges (% do total)
 - exchange_supply_diff_btc: Diff do Supply em Exchanges (%) - Fluxo para/das exchanges
-- spx_price: Preço do S&P 500 (para correlação)
+# - spx_price: Preço do S&P 500 (para correlação)
 - btc_log_ret: Log-retorno do preço do BTC
 - btc_spx_corr_30d: Correlação rolling 30d entre BTC e S&P500
 - cb_premium_usd: Coinbase Premium em USD
