@@ -38,26 +38,20 @@ df_periodo = (pd.DataFrame({"Data_UTC": pd.date_range(start=DATA_INICIO, end=DAT
              )
 
 
-# df_btc_price = pd.read_csv(rf"/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/dados_btc/raw/price_btc.csv")
-# df_btc_price['Data_UTC'] = pd.to_datetime(df_btc_price['time'], unit='s', utc=True,).dt.strftime("%Y-%m-%d")
-
-# df_target_price =(
-#     df_periodo
-#         .merge(df_btc_price[['Data_UTC','close']], how='left', on='Data_UTC')
-#         .assign(Data_UTC = lambda df: pd.to_datetime(df['Data_UTC']))
-#         .rename(columns={'close':'btc_price'})
-#         .assign(btc_log_ret = lambda df: np.log(df['btc_price']) - np.log(df['btc_price'].shift(1)))
-#         .query("Data_UTC > '2016-12-31'")
-#         [['Data_UTC','btc_price']]
-
-# )
-# df_target_price
-
 df_features = pd.read_csv("/Users/baia/Desktop/PYTHON/mba_dsa_usp_esalq/TCC/data/tabela_consolidada.csv").query("Data_UTC > '2017-01-03'").drop_duplicates()
 df_features['Data_UTC'] = pd.to_datetime(df_features['Data_UTC'])
-# df_features = df_features.set_index('Data_UTC')
 
+df_features_transformada = df_features[['Data_UTC', 'rvi_diff', 'funding_rate_diff_btc', 'miner_net_pos_change','exchange_supply_diff_btc', 
+    'btc_log_ret','cb_premium_diff_btc','eth_vol_log_ret', 'mvrv_diff_btc','whale_100k_log_ret',
+       'whale_1m_log_ret','spx_log_ret', 'dxy_log_ret','nasdaq_log_ret', 'gold_log_ret','us10y_diff', 'vix_log_ret',
+       'total3_log_ret', 'ssr_diff','flippening_close_diff', 'btc_log_vol', 'social_vol_spread','vol_acceleration','usdt_log_ret', 'usdc_log_ret']]
 
+df_features_crua = df_features.drop([ 'rvi_diff', 'funding_rate_diff_btc', 'miner_net_pos_change','exchange_supply_diff_btc', 
+    'btc_log_ret','cb_premium_diff_btc','eth_vol_log_ret', 'mvrv_diff_btc','whale_100k_log_ret',
+       'whale_1m_log_ret','spx_log_ret', 'dxy_log_ret','nasdaq_log_ret', 'gold_log_ret','us10y_diff', 'vix_log_ret',
+       'total3_log_ret', 'ssr_diff','flippening_close_diff', 'btc_log_vol', 'social_vol_spread','vol_acceleration','usdt_log_ret', 'usdc_log_ret'], axis=1)
+
+    
 def print_dataframe_info(df, nome_df="DataFrame"):
     """
     Imprime informações sobre um DataFrame: describe, info e head.
