@@ -89,12 +89,12 @@ df_supply_held_by = (
 df_supply_held_by_miners_btc = (
     df_periodo
     .merge(df_supply_held_by, how='left', on='Data_UTC')
-    .assign(miner_net_pos_change=lambda df: np.log(df['supply_held_by_miners_btc']) - np.log(df['supply_held_by_miners_btc'].shift(1)))
+    .assign(miner_net_pos_change_log=lambda df: np.log(df['supply_held_by_miners_btc']) - np.log(df['supply_held_by_miners_btc'].shift(1)))
     .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
     .assign(Data_UTC=lambda df: df['Data_UTC'].dt.strftime("%Y-%m-%d"))
     .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
     .query("Data_UTC > '2016-12-31'")
-    [['Data_UTC', 'supply_held_by_miners_btc', 'miner_net_pos_change']]
+    [['Data_UTC', 'supply_held_by_miners_btc', 'miner_net_pos_change_log']]
 )
 
 # --- 1.4 Supply on Exchanges (% of Total Supply) ---
@@ -149,7 +149,7 @@ df_coinbase_premium_diff = (
     .merge(df_coinbase_premium, how='left', on='Data_UTC')
     .assign(cb_premium_diff_btc=lambda df: df['cb_premium_usd'].diff())
     .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
-    .query("Data_UTC > '2019-12-31'")
+    .query("Data_UTC >= '2020-03-11'")
     [['Data_UTC', 'cb_premium_usd', 'cb_premium_diff_btc']]
 )
 
@@ -406,6 +406,7 @@ df_social_tratado = (
             'Data_UTC',
             'btc_social_volume',
             'btc_log_vol',
+            'alt_total_log_vol',
             'social_vol_spread',       # Intensidade relativa (Volume)
             'vol_acceleration'         # Explosão de interesse
         ]]
@@ -435,23 +436,6 @@ df_usdt_log_ret = (
     [['Data_UTC', 'usdt_dominance', 'usdt_log_ret']]
 )
 
-# --- 5.2 USDC Dominance ---
-df_usdc_raw = (
-    pd.read_csv(PATH_STABLE + "201901_dominance_usdc.csv")
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['time'], unit='s', utc=True).dt.strftime("%Y-%m-%d"))
-    .rename(columns={'close': 'usdc_dominance'})
-    [['Data_UTC', 'usdc_dominance']]
-)
-
-df_usdc_log_ret = (
-    df_periodo
-    .merge(df_usdc_raw, how='left', on='Data_UTC')
-    .assign(usdc_dominance=lambda df: df['usdc_dominance'].ffill())
-    .assign(usdc_log_ret=lambda df: np.log(df['usdc_dominance']) - np.log(df['usdc_dominance'].shift(1)))
-    .assign(Data_UTC=lambda df: pd.to_datetime(df['Data_UTC']))
-    .query("Data_UTC > '2017-01-03'")
-    [['Data_UTC', 'usdc_dominance', 'usdc_log_ret']]
-)
 
 # =============================================================================
 # CONSOLIDAÇÃO FINAL - LEFT JOIN DE TODAS AS FEATURES
@@ -494,7 +478,6 @@ df_consolidado = (
     .merge(to_str_date(df_social_tratado), how='left', on='Data_UTC')
     # STABLE Features
     .merge(to_str_date(df_usdt_log_ret), how='left', on='Data_UTC')
-    .merge(to_str_date(df_usdc_log_ret), how='left', on='Data_UTC')
 )
 
 # Converter Data_UTC para datetime no final
@@ -525,7 +508,7 @@ BTC (Bitcoin On-Chain & Technical):
 # - spx_price: Preço do S&P 500 (para correlação)
 - btc_log_ret: Log-retorno do preço do BTC
 - btc_spx_corr_30d: Correlação rolling 30d entre BTC e S&P500
-- cb_premium_usd: Coinbase Premium em USD
+- btcmium_usd: Coinbase Premium em USD
 - cb_premium_diff_btc: Diff do Coinbase Premium - Demanda institucional US
 - mvrv_close: Valor do MVRV Z-Score
 - mvrv_diff_btc: Diff do MVRV Z-Score - Sobre/subvalorização
